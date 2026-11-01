@@ -54,15 +54,21 @@ jobs:
         tag="pre-${{ github.run_number }}"
         apk=$(ls app/build/outputs/apk/release/*.apk | head -1)
         [ -n "$apk" ] || { echo "no release apk"; exit 1; }
-        fp=$(keytool -printcert -jarfile "$apk" 2>/dev/null | grep -i 'SHA256:' | head -1 | sed 's/.*SHA256: *//')
-        [ -n "$fp" ] || { echo "未读到签名证书指纹"; exit 1; }
-        echo "签名指纹: $fp"
+        raw=$(keytool -printcert -jarfile "$apk" 2>/dev/null | grep -i 'sha256' | head -1)
+        if [ -z "$raw" ]; then
+          signer=$(ls "$ANDROID_HOME"/build-tools/*/apksigner "$ANDROID_SDK_ROOT"/build-tools/*/apksigner 2>/dev/null | head -1)
+          echo "::error::DIAG apksigner=${signer:-none}"
+          [ -n "$signer" ] && raw=$("$signer" verify --print-certs "$apk" 2>&1 | grep -i 'sha-256' | head -1)
+        fi
+        echo "::error::DIAG raw=${raw:-EMPTY}"
+        fp=$(printf '%s' "${raw:-}" | tr -d ' :\t\r\n' | grep -oiE '[0-9a-f]{64}' | head -1 | tr 'A-Z' 'a-z')
+        echo "::error::DIAG fp=${fp:-EMPTY}"
         {
           echo "由 Android CI 自动构建的预发行版，对应 ${GITHUB_SHA}。"
           echo
           echo "**签名证书 SHA256**"
           echo '```'
-          echo "$fp"
+          echo "${fp:-未读取到}"
           echo '```'
           echo
           echo "**最近提交**"
